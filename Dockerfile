@@ -1,24 +1,24 @@
-# 1) Build do front
-FROM node:18-alpine AS frontend-builder
-WORKDIR /app
-COPY frontend/package*.json ./frontend/
-WORKDIR /app/frontend
-RUN npm install
-COPY frontend/ .
-RUN npm run build
+# Use Node14+Alpine para rodar apenas o backend + servir o build estático
+FROM node:18-alpine
 
-# 2) Prep do backend
-FROM node:18-alpine AS backend
-WORKDIR /app
-COPY backend/package*.json ./backend/
+# Cria pasta da API
 WORKDIR /app/backend
-RUN npm install
-COPY backend/ .
 
-# 3) Copia o build do front para o servidor
-COPY --from=frontend-builder /app/frontend/build ../frontend/build
+# Copia e instala deps do backend
+COPY backend/package*.json ./
+RUN npm install --omit=dev
 
-ENV NODE_ENV=production
-WORKDIR /app/backend
+# Copia o código da API
+COPY backend/ ./
+
+# Copia o build estático já gerado do React
+COPY frontend/build ../frontend/build
+
+# Exponha a porta
 EXPOSE 4000
+
+# Ambiente de produção
+ENV NODE_ENV=production
+
+# Inicia o servidor Express (que serve /api e ../frontend/build)
 CMD ["node", "server.js"]
