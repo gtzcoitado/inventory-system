@@ -1,21 +1,18 @@
+// src/pages/Checklists.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
-import { Trash2, Check } from 'lucide-react';
+import { Trash2, Check, Loader2 } from 'lucide-react';
 import { AuthContext } from '../AuthContext';
 
 export default function Checklists() {
   const { user } = useContext(AuthContext);
-
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-
   const [newShift, setNewShift]   = useState(user.shift);
   const [newSector, setNewSector] = useState(user.sector);
   const [newTask, setNewTask]     = useState('');
-
-  const [creating, setCreating]   = useState(false);
-  const [taskLoadingId, setTaskLoadingId] = useState(null);
-  const [toggleLoading, setToggleLoading] = useState({});  
+  const [toggling, setToggling]   = useState(null);    // ← which task-id is loading
+  const [creating, setCreating]   = useState(false);   // ← loading state for “create list”
+  const [adding, setAdding]       = useState(null);    // ← loading state for “add task” per checklist
 
   const canView = user.role.permissions.includes('Admin') ||
     ['ChecklistView','ChecklistEdit','ChecklistMark']
@@ -26,11 +23,7 @@ export default function Checklists() {
     user.role.permissions.includes('ChecklistEdit');
 
   useEffect(() => {
-    if (!canView) return;
-    (async () => {
-      await load();
-      setLoading(false);
-    })();
+    if (canView) load();
   }, [canView]);
 
   async function load() {
@@ -52,60 +45,55 @@ export default function Checklists() {
       sector: newSector,
       tasks: []
     });
-    await load();
     setCreating(false);
+    load();
   }
 
-  async function addTask(listId) {
+  async function addTask(id) {
     if (!newTask.trim()) return;
-    setTaskLoadingId(listId);
-    await axios.post(`/api/checklists/${listId}/tasks`, { text: newTask });
+    setAdding(id);
+    await axios.post(`/api/checklists/${id}/tasks`, { text: newTask });
     setNewTask('');
-    await load();
-    setTaskLoadingId(null);
+    setAdding(null);
+    load();
   }
 
   async function toggle(listId, tid, done) {
-    setToggleLoading(t => ({ ...t, [tid]: true }));
+    setToggling(tid);
     await axios.patch(`/api/checklists/${listId}/tasks/${tid}`, { done });
-    await load();
-    setToggleLoading(t => ({ ...t, [tid]: false }));
+    setToggling(null);
+    load();
   }
 
-  async function removeTask(listId, tid) {
+  async function removeTask(id, tid) {
     if (!confirm('Remover tarefa?')) return;
-    setTaskLoadingId(tid);
-    await axios.delete(`/api/checklists/${listId}/tasks/${tid}`);
-    await load();
-    setTaskLoadingId(null);
+    await axios.delete(`/api/checklists/${id}/tasks/${tid}`);
+    load();
   }
 
   async function removeList(id) {
     if (!confirm('Remover checklist?')) return;
-    setCreating(id);
     await axios.delete(`/api/checklists/${id}`);
-    await load();
-    setCreating(false);
+    load();
   }
 
   if (!canView) {
-    return <div className="p-4 text-center text-gray-500">Sem permissão para visualizar.</div>;
-  }
-
-  if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-8 w-8 border-4 rounded-full border-primary border-t-transparent" />
+      <div className="p-4 text-center text-gray-500">
+        Sem permissão para visualizar.
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       <h2 className="text-3xl font-extrabold text-primary">Checklist</h2>
 
       {canEdit && (
-        <form onSubmit={createList} className="grid sm:grid-cols-3 gap-4 items-end">
+        <form
+          onSubmit={createList}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+        >
           <select
             value={newShift}
             onChange={e => setNewShift(e.target.value)}
@@ -127,9 +115,10 @@ export default function Checklists() {
           <button
             type="submit"
             disabled={creating}
-            className="px-4 py-2 bg-secondary text-white rounded-lg disabled:opacity-50"
+            className={`px-4 py-2 text-white rounded-lg transition
+              ${creating ? 'bg-gray-400 cursor-wait' : 'bg-secondary hover:bg-secondary/90'}`}
           >
-            {creating ? 'Criando…' : 'Criar checklist'}
+            {creating ? <Loader2 className="animate-spin inline-block" size={16}/> : 'Criar checklist'}
           </button>
         </form>
       )}
@@ -137,14 +126,16 @@ export default function Checklists() {
       {/* mobile cards */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
         {items.map(cl => (
-          <div key={cl._id} className="bg-white rounded-xl shadow-card p-4 space-y-3">
-            <div className="flex justify-between">
+          <div
+            key={cl._id}
+            className="bg-white rounded-xl shadow-card p-4 space-y-3"
+          >
+            <div className="flex justify-between items-center">
               <div className="font-semibold">{cl.shift} – {cl.sector}</div>
               {canEdit && (
                 <button
                   onClick={() => removeList(cl._id)}
-                  disabled={creating === cl._id}
-                  className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                  className="text-red-600 hover:text-red-800"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -152,28 +143,34 @@ export default function Checklists() {
             </div>
             <ul className="space-y-2">
               {cl.tasks.map(t => (
-                <li key={t._id} className="flex items-center justify-between">
+                <li
+                  key={t._id}
+                  className="flex items-center justify-between"
+                >
                   <div className="flex items-center space-x-2">
-                    {canMark ? (
-                      <input
-                        type="checkbox"
-                        checked={t.done}
-                        onChange={() => toggle(cl._id, t._id, !t.done)}
-                        disabled={toggleLoading[t._id]}
-                        className="h-5 w-5"
-                      />
-                    ) : t.done ? (
-                      <Check className="text-green-500" />
-                    ) : (
-                      <span className="w-5 h-5 inline-block" />
-                    )}
-                    <span className={t.done ? 'line-through' : ''}>{t.text}</span>
+                    {toggling === t._id
+                      ? <Loader2 className="animate-spin text-gray-500" size={20}/>
+                      : canMark
+                        ? (
+                          <input
+                            type="checkbox"
+                            checked={t.done}
+                            onChange={() => toggle(cl._id, t._id, !t.done)}
+                            className="h-5 w-5"
+                          />
+                        )
+                        : t.done
+                          ? <Check className="text-green-500"/>
+                          : <span className="w-5 h-5 inline-block"/>
+                    }
+                    <span className={t.done ? 'line-through text-gray-400' : ''}>
+                      {t.text}
+                    </span>
                   </div>
                   {canEdit && (
                     <button
                       onClick={() => removeTask(cl._id, t._id)}
-                      disabled={taskLoadingId === t._id}
-                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                      className="text-red-600 hover:text-red-800"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -188,19 +185,27 @@ export default function Checklists() {
                   value={newTask}
                   onChange={e => setNewTask(e.target.value)}
                   placeholder="Nova tarefa"
-                  className="flex-1 p-2 border rounded-lg"
+                  className="flex-1 p-2 border rounded-lg focus:ring-primary focus:ring-2"
                 />
                 <button
                   onClick={() => addTask(cl._id)}
-                  disabled={taskLoadingId === cl._id}
-                  className="px-3 py-1 bg-primary text-white rounded-lg disabled:opacity-50"
+                  disabled={adding === cl._id}
+                  className={`px-3 py-1 text-white rounded-lg transition
+                    ${adding === cl._id ? 'bg-gray-400 cursor-wait' : 'bg-primary hover:bg-primary/90'}`}
                 >
-                  {taskLoadingId === cl._id ? '…' : 'Adicionar'}
+                  {adding === cl._id
+                    ? <Loader2 className="animate-spin inline-block" size={16}/>
+                    : 'Adicionar'}
                 </button>
               </div>
             )}
           </div>
         ))}
+        {items.length === 0 && (
+          <div className="text-center text-gray-500 py-8">
+            Nenhum checklist.
+          </div>
+        )}
       </div>
 
       {/* desktop table */}
@@ -208,43 +213,48 @@ export default function Checklists() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-4 text-left text-sm font-semibold">Checklist</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold">Tarefas</th>
-              {canEdit && <th className="px-6 py-4" />}
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase">Checklist</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase">Tarefas</th>
+              {canEdit && <th className="px-6 py-4"/>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="bg-white divide-y divide-gray-100">
             {items.map(cl => (
               <tr key={cl._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">{cl.shift} – {cl.sector}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {cl.shift} – {cl.sector}
+                </td>
                 <td className="px-6 py-4">
                   <ul className="space-y-2">
                     {cl.tasks.map(t => (
                       <li key={t._id} className="flex items-center space-x-2">
-                        {canMark ? (
-                          <input
-                            type="checkbox"
-                            checked={t.done}
-                            onChange={() => toggle(cl._id, t._id, !t.done)}
-                            disabled={toggleLoading[t._id]}
-                            className="h-5 w-5"
-                          />
-                        ) : t.done ? (
-                          <Check className="text-green-500" />
-                        ) : (
-                          <span className="w-5 h-5 inline-block" />
-                        )}
-                        <span className={t.done ? 'line-through' : ''}>{t.text}</span>
+                        {toggling === t._id
+                          ? <Loader2 className="animate-spin text-gray-500" size={20}/>
+                          : canMark
+                            ? (
+                              <input
+                                type="checkbox"
+                                checked={t.done}
+                                onChange={() => toggle(cl._id, t._id, !t.done)}
+                                className="h-5 w-5"
+                              />
+                            )
+                            : t.done
+                              ? <Check className="text-green-500"/>
+                              : <span className="w-5 h-5 inline-block"/>
+                        }
+                        <span className={t.done ? 'line-through text-gray-400' : ''}>
+                          {t.text}
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </td>
                 {canEdit && (
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-6 py-4 text-center whitespace-nowrap">
                     <button
                       onClick={() => removeList(cl._id)}
-                      disabled={creating === cl._id}
-                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                      className="text-red-600 hover:text-red-800"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -252,6 +262,13 @@ export default function Checklists() {
                 )}
               </tr>
             ))}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={canEdit ? 3 : 2} className="px-6 py-8 text-center text-gray-400">
+                  Nenhum checklist.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
