@@ -1,0 +1,15 @@
+# ===== BACKEND =====
+/backend/node_modules/
+/backend/.env
+
+# ===== FRONTEND =====
+/frontend/node_modules/
+/frontend/build/
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+
+# ===== GERAIS =====
+.DS_Store
+.vscode/
