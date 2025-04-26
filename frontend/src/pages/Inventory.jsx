@@ -4,8 +4,8 @@ import { Search } from 'lucide-react';
 
 export default function Inventory() {
   const [products, setProducts] = useState([]);
-  const [groups, setGroups]     = useState([]);
-  const [filterText, setFilterText]   = useState('');
+  const [groups, setGroups] = useState([]);
+  const [filterText, setFilterText] = useState('');
   const [filterGroup, setFilterGroup] = useState('');
   const [modal, setModal] = useState({
     isOpen: false,
@@ -13,6 +13,7 @@ export default function Inventory() {
     type: 'Entrada',
     amount: ''
   });
+  const [loadingAdjust, setLoadingAdjust] = useState(false);
 
   useEffect(() => {
     loadStock();
@@ -35,13 +36,25 @@ export default function Inventory() {
   function closeModal() {
     setModal(m => ({ ...m, isOpen: false }));
   }
+
   async function handleConfirm() {
     const { product, type, amount } = modal;
     const qty = Number(amount);
-    if (!qty || qty <= 0) return alert('Quantidade inválida');
-    await axios.post(`/api/stock/${product._id}/adjust`, { type, amount: qty });
-    closeModal();
-    loadStock();
+    if (!qty || qty <= 0) {
+      alert('Quantidade inválida');
+      return;
+    }
+    setLoadingAdjust(true);
+    try {
+      await axios.post(`/api/stock/${product._id}/adjust`, { type, amount: qty });
+      closeModal();
+      await loadStock();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao ajustar estoque');
+    } finally {
+      setLoadingAdjust(false);
+    }
   }
 
   const filtered = products.filter(p => {
@@ -116,7 +129,7 @@ export default function Inventory() {
         <table className="min-w-full w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {['Produto','Grupo','Qtd.','Ajustar'].map(h => (
+              {['Produto', 'Grupo', 'Qtd.', 'Ajustar'].map(h => (
                 <th
                   key={h}
                   className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide"
@@ -135,10 +148,7 @@ export default function Inventory() {
               </tr>
             ) : (
               filtered.map(p => (
-                <tr
-                  key={p._id}
-                  className="hover:bg-gray-50 transition-colors"
-                >
+                <tr key={p._id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">{p.name}</td>
                   <td className="px-6 py-4">{p.group?.name}</td>
                   <td className="px-6 py-4 text-center">{p.stock}</td>
@@ -164,6 +174,7 @@ export default function Inventory() {
             <button
               onClick={closeModal}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              disabled={loadingAdjust}
             >
               ✕
             </button>
@@ -178,6 +189,7 @@ export default function Inventory() {
                   value={modal.type}
                   onChange={e => setModal(m => ({ ...m, type: e.target.value }))}
                   className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  disabled={loadingAdjust}
                 >
                   <option>Entrada</option>
                   <option>Saída</option>
@@ -193,6 +205,7 @@ export default function Inventory() {
                   value={modal.amount}
                   onChange={e => setModal(m => ({ ...m, amount: e.target.value }))}
                   className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  disabled={loadingAdjust}
                 />
               </div>
             </div>
@@ -201,14 +214,22 @@ export default function Inventory() {
               <button
                 onClick={closeModal}
                 className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition"
+                disabled={loadingAdjust}
               >
                 Cancelar
               </button>
               <button
                 onClick={handleConfirm}
-                className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-secondary/90 transition"
+                className={`px-4 py-2 rounded-lg transition
+                  ${loadingAdjust
+                    ? 'bg-gray-300 text-gray-600'
+                    : 'bg-secondary text-white hover:bg-secondary/90'}`}
+                disabled={loadingAdjust}
               >
-                Confirmar
+                {loadingAdjust
+                  ? <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                  : 'Confirmar'
+                }
               </button>
             </div>
           </div>

@@ -5,10 +5,17 @@ import { AuthContext } from '../AuthContext';
 
 export default function Checklists() {
   const { user } = useContext(AuthContext);
+
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [newShift, setNewShift]   = useState(user.shift);
   const [newSector, setNewSector] = useState(user.sector);
   const [newTask, setNewTask]     = useState('');
+
+  const [creating, setCreating]   = useState(false);
+  const [taskLoadingId, setTaskLoadingId] = useState(null);
+  const [toggleLoading, setToggleLoading] = useState({});  
 
   const canView = user.role.permissions.includes('Admin') ||
     ['ChecklistView','ChecklistEdit','ChecklistMark']
@@ -20,7 +27,10 @@ export default function Checklists() {
 
   useEffect(() => {
     if (!canView) return;
-    load();
+    (async () => {
+      await load();
+      setLoading(false);
+    })();
   }, [canView]);
 
   async function load() {
@@ -36,55 +46,66 @@ export default function Checklists() {
 
   async function createList(e) {
     e.preventDefault();
+    setCreating(true);
     await axios.post('/api/checklists', {
       shift: newShift,
       sector: newSector,
       tasks: []
     });
-    load();
+    await load();
+    setCreating(false);
   }
 
-  async function addTask(id) {
+  async function addTask(listId) {
     if (!newTask.trim()) return;
-    await axios.post(`/api/checklists/${id}/tasks`, { text: newTask });
+    setTaskLoadingId(listId);
+    await axios.post(`/api/checklists/${listId}/tasks`, { text: newTask });
     setNewTask('');
-    load();
+    await load();
+    setTaskLoadingId(null);
   }
 
-  async function toggle(id, tid, done) {
-    await axios.patch(`/api/checklists/${id}/tasks/${tid}`, { done });
-    load();
+  async function toggle(listId, tid, done) {
+    setToggleLoading(t => ({ ...t, [tid]: true }));
+    await axios.patch(`/api/checklists/${listId}/tasks/${tid}`, { done });
+    await load();
+    setToggleLoading(t => ({ ...t, [tid]: false }));
   }
 
-  async function removeTask(id, tid) {
+  async function removeTask(listId, tid) {
     if (!confirm('Remover tarefa?')) return;
-    await axios.delete(`/api/checklists/${id}/tasks/${tid}`);
-    load();
+    setTaskLoadingId(tid);
+    await axios.delete(`/api/checklists/${listId}/tasks/${tid}`);
+    await load();
+    setTaskLoadingId(null);
   }
 
   async function removeList(id) {
     if (!confirm('Remover checklist?')) return;
+    setCreating(id);
     await axios.delete(`/api/checklists/${id}`);
-    load();
+    await load();
+    setCreating(false);
   }
 
   if (!canView) {
+    return <div className="p-4 text-center text-gray-500">Sem permissão para visualizar.</div>;
+  }
+
+  if (loading) {
     return (
-      <div className="p-4 text-center text-gray-500">
-        Sem permissão para visualizar.
+      <div className="flex justify-center py-20">
+        <div className="animate-spin h-8 w-8 border-4 rounded-full border-primary border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <h2 className="text-3xl font-extrabold text-primary">Checklist</h2>
 
       {canEdit && (
-        <form
-          onSubmit={createList}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
-        >
+        <form onSubmit={createList} className="grid sm:grid-cols-3 gap-4 items-end">
           <select
             value={newShift}
             onChange={e => setNewShift(e.target.value)}
@@ -105,9 +126,10 @@ export default function Checklists() {
           </select>
           <button
             type="submit"
-            className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-secondary/90 transition"
+            disabled={creating}
+            className="px-4 py-2 bg-secondary text-white rounded-lg disabled:opacity-50"
           >
-            Criar checklist
+            {creating ? 'Criando…' : 'Criar checklist'}
           </button>
         </form>
       )}
@@ -115,16 +137,14 @@ export default function Checklists() {
       {/* mobile cards */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
         {items.map(cl => (
-          <div
-            key={cl._id}
-            className="bg-white rounded-xl shadow-card p-4 space-y-3"
-          >
-            <div className="flex justify-between items-center">
+          <div key={cl._id} className="bg-white rounded-xl shadow-card p-4 space-y-3">
+            <div className="flex justify-between">
               <div className="font-semibold">{cl.shift} – {cl.sector}</div>
               {canEdit && (
                 <button
                   onClick={() => removeList(cl._id)}
-                  className="text-red-600 hover:text-red-800"
+                  disabled={creating === cl._id}
+                  className="text-red-600 hover:text-red-800 disabled:opacity-50"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -132,16 +152,14 @@ export default function Checklists() {
             </div>
             <ul className="space-y-2">
               {cl.tasks.map(t => (
-                <li
-                  key={t._id}
-                  className="flex items-center justify-between"
-                >
+                <li key={t._id} className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     {canMark ? (
                       <input
                         type="checkbox"
                         checked={t.done}
                         onChange={() => toggle(cl._id, t._id, !t.done)}
+                        disabled={toggleLoading[t._id]}
                         className="h-5 w-5"
                       />
                     ) : t.done ? (
@@ -149,14 +167,13 @@ export default function Checklists() {
                     ) : (
                       <span className="w-5 h-5 inline-block" />
                     )}
-                    <span className={t.done ? 'line-through' : ''}>
-                      {t.text}
-                    </span>
+                    <span className={t.done ? 'line-through' : ''}>{t.text}</span>
                   </div>
                   {canEdit && (
                     <button
                       onClick={() => removeTask(cl._id, t._id)}
-                      className="text-red-600 hover:text-red-800"
+                      disabled={taskLoadingId === t._id}
+                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -171,23 +188,19 @@ export default function Checklists() {
                   value={newTask}
                   onChange={e => setNewTask(e.target.value)}
                   placeholder="Nova tarefa"
-                  className="flex-1 p-2 border rounded-lg focus:ring-primary focus:ring-2"
+                  className="flex-1 p-2 border rounded-lg"
                 />
                 <button
                   onClick={() => addTask(cl._id)}
-                  className="px-3 py-1 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
+                  disabled={taskLoadingId === cl._id}
+                  className="px-3 py-1 bg-primary text-white rounded-lg disabled:opacity-50"
                 >
-                  Adicionar
+                  {taskLoadingId === cl._id ? '…' : 'Adicionar'}
                 </button>
               </div>
             )}
           </div>
         ))}
-        {items.length === 0 && (
-          <div className="text-center text-gray-500 py-8">
-            Nenhum checklist.
-          </div>
-        )}
       </div>
 
       {/* desktop table */}
@@ -195,47 +208,43 @@ export default function Checklists() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase">Checklist</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase">Tarefas</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold">Checklist</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold">Tarefas</th>
               {canEdit && <th className="px-6 py-4" />}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100">
             {items.map(cl => (
               <tr key={cl._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {cl.shift} – {cl.sector}
-                </td>
+                <td className="px-6 py-4">{cl.shift} – {cl.sector}</td>
                 <td className="px-6 py-4">
                   <ul className="space-y-2">
                     {cl.tasks.map(t => (
-                      <li key={t._id} className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          {canMark ? (
-                            <input
-                              type="checkbox"
-                              checked={t.done}
-                              onChange={() => toggle(cl._id, t._id, !t.done)}
-                              className="h-5 w-5"
-                            />
-                          ) : t.done ? (
-                            <Check className="text-green-500" />
-                          ) : (
-                            <span className="w-5 h-5 inline-block" />
-                          )}
-                          <span className={t.done ? 'line-through' : ''}>
-                            {t.text}
-                          </span>
-                        </div>
+                      <li key={t._id} className="flex items-center space-x-2">
+                        {canMark ? (
+                          <input
+                            type="checkbox"
+                            checked={t.done}
+                            onChange={() => toggle(cl._id, t._id, !t.done)}
+                            disabled={toggleLoading[t._id]}
+                            className="h-5 w-5"
+                          />
+                        ) : t.done ? (
+                          <Check className="text-green-500" />
+                        ) : (
+                          <span className="w-5 h-5 inline-block" />
+                        )}
+                        <span className={t.done ? 'line-through' : ''}>{t.text}</span>
                       </li>
                     ))}
                   </ul>
                 </td>
                 {canEdit && (
-                  <td className="px-6 py-4 text-center whitespace-nowrap">
+                  <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => removeList(cl._id)}
-                      className="text-red-600 hover:text-red-800"
+                      disabled={creating === cl._id}
+                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -243,16 +252,9 @@ export default function Checklists() {
                 )}
               </tr>
             ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 3 : 2} className="px-6 py-8 text-center text-gray-400">
-                  Nenhum checklist.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
     </div>
-);
+  );
 }
