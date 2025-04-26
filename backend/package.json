@@ -4,7 +4,10 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "postinstall": "cd ../frontend && npm install && npm run build",
+
+    "start": "NODE_ENV=production node server.js",
+
     "dev": "nodemon server.js"
   },
   "dependencies": {
