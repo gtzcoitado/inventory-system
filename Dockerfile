@@ -1,24 +1,32 @@
-# Use Node14+Alpine para rodar apenas o backend + servir o build estático
-FROM node:18-alpine
+# etapa 1: build do React
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
 
-# Cria pasta da API
+# só copia package.json para aproveitar cache
+COPY frontend/package*.json ./
+RUN npm install
+
+# copia todo o código do frontend e gera o build
+COPY frontend/ ./
+RUN npm run build
+
+# etapa 2: prepara o backend
+FROM node:18-alpine AS backend
 WORKDIR /app/backend
 
-# Copia e instala deps do backend
+# copia e instala deps do backend
 COPY backend/package*.json ./
-RUN npm install --omit=dev
+RUN npm install --production
 
-# Copia o código da API
+# copia código do backend
 COPY backend/ ./
 
-# Copia o build estático já gerado do React
-COPY frontend/build ../frontend/build
+# traz o build estático do estágio frontend-builder
+COPY --from=frontend-builder /app/frontend/build ../frontend/build
 
-# Exponha a porta
+# define variáveis de ambiente
+ENV NODE_ENV=production
 EXPOSE 4000
 
-# Ambiente de produção
-ENV NODE_ENV=production
-
-# Inicia o servidor Express (que serve /api e ../frontend/build)
+# comando final: inicia o Express que serve o React build
 CMD ["node", "server.js"]
