@@ -10,27 +10,29 @@ router.get('/', async (req, res) => {
 
 // criar produto
 router.post('/', async (req, res) => {
-  const { name, group } = req.body;
-  const product = new Product({ name, group });
-  await product.save();
-  res.status(201).json(await product.populate('group'));
+  try {
+    const { name, group, minStock } = req.body;
+    const p = new Product({ name, group, minStock });    // ← inclui minStock
+    await p.save();
+    res.status(201).json(p);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // editar produto
 router.put('/:id', async (req, res) => {
-  const { name, group } = req.body;
-  const product = await Product.findByIdAndUpdate(
-    req.params.id,
-    { name, group },
-    { new: true }
-  ).populate('group');
-  res.json(product);
-});
-
-// remover produto
-router.delete('/:id', async (req, res) => {
-  await Product.findByIdAndRemove(req.params.id);
-  res.sendStatus(204);
+  try {
+    const { name, group, minStock } = req.body;
+    const p = await Product.findByIdAndUpdate(
+      req.params.id,
+      { name, group, minStock },        // ← inclui minStock
+      { new: true }
+    );
+    res.json(p);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 export default router;
