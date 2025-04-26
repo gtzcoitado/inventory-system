@@ -1,15 +1,16 @@
+// src/pages/Products.jsx
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
-import { Edit2, Trash2 } from 'lucide-react'
+import { Edit2, Trash2, Check, X } from 'lucide-react'
 
 export default function Products() {
-  const [products, setProducts] = useState([])
-  const [groups, setGroups]     = useState([])
-  const [form, setForm]         = useState({ name: '', group: '' })
-
+  const [products, setProducts]       = useState([])
+  const [groups, setGroups]           = useState([])
+  const [form, setForm]               = useState({ name: '', group: '', minStock: '' })
+  const [editingId, setEditingId]     = useState(null)
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [loadingGroups, setLoadingGroups]     = useState(false)
-  const [creating, setCreating]               = useState(false)
+  const [saving, setSaving]                   = useState(false)
 
   useEffect(() => {
     loadProducts()
@@ -42,20 +43,45 @@ export default function Products() {
     }
   }
 
+  function startEdit(p) {
+    setEditingId(p._id)
+    setForm({ name: p.name, group: p.group?._id || '', minStock: p.minStock?.toString() || '' })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm({ name: '', group: '', minStock: '' })
+  }
+
   async function submit(e) {
     e.preventDefault()
-    if (!form.name || !form.group) return
+    if (!form.name || !form.group || form.minStock === '') return
 
-    setCreating(true)
+    setSaving(true)
     try {
-      await axios.post('/api/products', form)
-      setForm({ name: '', group: '' })
+      if (editingId) {
+        // update existing
+        await axios.put(`/api/products/${editingId}`, {
+          name: form.name,
+          group: form.group,
+          minStock: Number(form.minStock)
+        })
+      } else {
+        // create new
+        await axios.post('/api/products', {
+          name: form.name,
+          group: form.group,
+          minStock: Number(form.minStock)
+        })
+      }
+      setForm({ name: '', group: '', minStock: '' })
+      setEditingId(null)
       await loadProducts()
     } catch (err) {
       console.error(err)
-      alert('Erro ao criar produto')
+      alert('Erro ao salvar produto')
     } finally {
-      setCreating(false)
+      setSaving(false)
     }
   }
 
@@ -77,7 +103,7 @@ export default function Products() {
       {/* form */}
       <form
         onSubmit={submit}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+        className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
       >
         <div>
           <label className="block text-sm font-medium mb-1">Nome do produto</label>
@@ -86,8 +112,7 @@ export default function Products() {
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-            placeholder={loadingGroups ? 'Aguarde...' : 'Digite o nome'}
-            disabled={creating}
+            disabled={saving}
           />
         </div>
         <div>
@@ -96,110 +121,91 @@ export default function Products() {
             value={form.group}
             onChange={e => setForm(f => ({ ...f, group: e.target.value }))}
             className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-            disabled={loadingGroups || creating}
+            disabled={loadingGroups || saving}
           >
             <option value="">
               {loadingGroups ? 'Carregando grupos...' : 'Selecione grupo'}
             </option>
             {groups.map(g => (
-              <option key={g._id} value={g._id}>
-                {g.name}
-              </option>
+              <option key={g._id} value={g._id}>{g.name}</option>
             ))}
           </select>
         </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Estoque Mínimo</label>
+          <input
+            type="number"
+            min="0"
+            value={form.minStock}
+            onChange={e => setForm(f => ({ ...f, minStock: e.target.value }))}
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+            disabled={saving}
+          />
+        </div>
         <button
           type="submit"
-          disabled={creating}
+          disabled={saving}
           className={`w-full sm:w-auto px-4 py-2 rounded-lg text-white transition
-            ${creating ? 'bg-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-secondary/90'}`}
+            ${saving ? 'bg-gray-400 cursor-not-allowed' : editingId ? 'bg-green-600 hover:bg-green-700' : 'bg-secondary hover:bg-secondary/90'}`}
         >
-          {creating ? 'Criando...' : 'Criar'}
+          {saving
+            ? (editingId ? 'Salvando...' : 'Criando...')
+            : (editingId ? 'Atualizar' : 'Criar')}
         </button>
+        {editingId && (
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="w-full sm:w-auto px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition"
+          >
+            Cancelar
+          </button>
+        )}
       </form>
 
-      {/* lista */}
+      {/* list */}
       {loadingProducts ? (
         <div className="text-center text-gray-500 py-8">Carregando produtos...</div>
       ) : (
-        <>
-          {/* mobile cards */}
-          <div className="grid grid-cols-1 gap-4 md:hidden">
-            {products.map(p => (
-              <div
-                key={p._id}
-                className="bg-white rounded-xl shadow-card p-4 flex justify-between items-start"
-              >
-                <div>
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="text-gray-500 text-sm">{p.group?.name}</div>
-                </div>
-                <div className="space-x-2">
-                  <button className="text-blue-600 hover:text-blue-800">
-                    <Edit2 size={18} />
-                  </button>
-                  <button
-                    onClick={() => remove(p._id)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            ))}
-            {products.length === 0 && (
-              <div className="text-center text-gray-500 py-8">
-                Nenhum produto cadastrado.
-              </div>
-            )}
-          </div>
-
-          {/* desktop table */}
-          <div className="hidden md:block overflow-x-auto bg-white rounded-2xl shadow-lg">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {['Produto','Grupo','Ações'].map(h => (
-                    <th
-                      key={h}
-                      className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {products.map(p => (
-                  <tr key={p._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">{p.name}</td>
-                    <td className="px-6 py-4">{p.group?.name}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex space-x-4">
-                        <button className="text-blue-600 hover:text-blue-800">
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => remove(p._id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+        <div className="overflow-x-auto bg-white rounded-2xl shadow-lg">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {['Produto','Grupo','Min.','Ações'].map(h => (
+                  <th key={h} className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase">
+                    {h}
+                  </th>
                 ))}
-                {products.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-8 text-center text-gray-400">
-                      Nenhum produto cadastrado.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {products.map(p => (
+                <tr key={p._id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">{p.name}</td>
+                  <td className="px-6 py-4">{p.group?.name}</td>
+                  <td className="px-6 py-4 text-center">{p.minStock ?? 0}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex space-x-4">
+                      <button onClick={() => startEdit(p)} className="text-blue-600 hover:text-blue-800">
+                        <Edit2 size={18} />
+                      </button>
+                      <button onClick={() => remove(p._id)} className="text-red-600 hover:text-red-800">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {products.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
+                    Nenhum produto cadastrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
 )
