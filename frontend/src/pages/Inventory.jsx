@@ -26,14 +26,12 @@ function formatLastUpdate(iso) {
 export default function Inventory() {
   const { user } = useContext(AuthContext);
 
-  // produtos, grupos e filtros
   const [products, setProducts] = useState([]);
   const [groups, setGroups]     = useState([]);
   const [filterText, setFilterText]         = useState('');
   const [filterGroup, setFilterGroup]       = useState('');
   const [filterBelowMin, setFilterBelowMin] = useState(false);
 
-  // estado do modal
   const [modal, setModal] = useState({
     isOpen: false,
     product: null,
@@ -73,27 +71,43 @@ export default function Inventory() {
     setModal(m => ({ ...m, isOpen: false }));
   }
 
+  // handleConfirm refeito para garantir envio correto de userId e debug
   async function handleConfirm() {
     const { product, type, amount } = modal;
     const qty = Number(amount);
+
     if (!qty || qty <= 0) {
       alert('Quantidade inválida');
       return;
     }
+
+    // pega ID do usuário (pode ser user._id ou user.id)
+    const operatorId = user._id || user.id;
+    if (!operatorId) {
+      alert('ID do usuário não encontrado. Faça login novamente.');
+      return;
+    }
+
+    const payload = { type, amount: qty, userId: operatorId };
+    console.log('Ajuste de estoque: POST', `/api/stock/${product._id}/adjust`, payload);
+
     setSaving(true);
     try {
       const { data: updated } = await axios.post(
         `/api/stock/${product._id}/adjust`,
-        { type, amount: qty, userId: user._id }
+        payload
       );
-      // substitui só o item ajustado
+      console.log('Resposta da API (updated):', updated);
+
+      // atualiza somente o item ajustado
       setProducts(prev =>
-        prev.map(p => p._id === updated._id ? updated : p)
+        prev.map(p => (p._id === updated._id ? updated : p))
       );
       closeModal();
     } catch (err) {
       console.error('Erro ao ajustar estoque:', err);
-      alert('Erro ao ajustar estoque');
+      console.error('Resposta da API:', err.response?.data);
+      alert(err.response?.data?.error || 'Erro ao ajustar estoque');
     } finally {
       setSaving(false);
     }
@@ -179,7 +193,10 @@ export default function Inventory() {
           <thead className="bg-gray-50">
             <tr>
               {['Produto','Grupo','Qtd.','Última atualização','Ajustar'].map(h => (
-                <th key={h} className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                <th
+                  key={h}
+                  className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide"
+                >
                   {h}
                 </th>
               ))}
@@ -236,7 +253,6 @@ export default function Inventory() {
               ✕
             </button>
             <h3 className="text-2xl font-bold mb-4">{modal.product.name}</h3>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Tipo de ajuste</label>
@@ -262,7 +278,6 @@ export default function Inventory() {
                 />
               </div>
             </div>
-
             <div className="mt-6 flex justify-end space-x-2">
               <button
                 onClick={closeModal}
