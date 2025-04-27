@@ -1,13 +1,28 @@
+// src/pages/Inventory.jsx
 import React, { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
 import { Search } from 'lucide-react';
 import { AuthContext } from '../AuthContext';
 
+function formatLastUpdate(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (isNaN(d)) return '–';
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (d.toDateString() === now.toDateString()) return `Hoje às ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Ontem às ${time}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} às ${time}`;
+}
+
 export default function Inventory() {
   const { user } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
-  const [groups, setGroups] = useState([]);
-  const [filterText, setFilterText] = useState('');
+  const [groups, setGroups]     = useState([]);
+  const [filterText, setFilterText]   = useState('');
   const [filterGroup, setFilterGroup] = useState('');
   const [modal, setModal] = useState({
     isOpen: false,
@@ -15,7 +30,7 @@ export default function Inventory() {
     type: 'Entrada',
     amount: ''
   });
-  const [loadingAdjust, setLoadingAdjust] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadStock();
@@ -23,18 +38,33 @@ export default function Inventory() {
   }, []);
 
   async function loadStock() {
-    const { data } = await axios.get('/api/stock');
-    setProducts(data);
+    try {
+      const { data } = await axios.get('/api/stock');
+      // normalize tanto updatedAt/updatedBy quanto lastUpdatedAt/lastUpdatedBy
+      const norm = data.map(p => ({
+        ...p,
+        updatedAt: p.updatedAt || p.lastUpdatedAt,
+        updatedBy: p.updatedBy || p.lastUpdatedBy?.name || null
+      }));
+      setProducts(norm);
+    } catch (err) {
+      console.error('Erro ao carregar estoque:', err);
+    }
   }
 
   async function loadGroups() {
-    const { data } = await axios.get('/api/groups');
-    setGroups(data);
+    try {
+      const { data } = await axios.get('/api/groups');
+      setGroups(data);
+    } catch (err) {
+      console.error('Erro ao carregar grupos:', err);
+    }
   }
 
   function openModal(product) {
     setModal({ isOpen: true, product, type: 'Entrada', amount: '' });
   }
+
   function closeModal() {
     setModal(m => ({ ...m, isOpen: false }));
   }
@@ -46,28 +76,29 @@ export default function Inventory() {
       alert('Quantidade inválida');
       return;
     }
-    setLoadingAdjust(true);
+    setSaving(true);
     try {
-      await axios.post(`/api/stock/${product._id}/adjust`, { type, amount: qty });
+      const { data: updated } = await axios.post(
+        `/api/stock/${product._id}/adjust`,
+        { type, amount: qty, userId: user._id }
+      );
+      // normaliza o updated retornado
+      const norm = {
+        ...updated,
+        updatedAt: updated.updatedAt || updated.lastUpdatedAt,
+        updatedBy: updated.updatedBy || updated.lastUpdatedBy?.name || null
+      };
+      // atualiza só o produto alterado em tempo real
+      setProducts(prev =>
+        prev.map(p => (p._id === norm._id ? norm : p))
+      );
       closeModal();
-      await loadStock();
     } catch (err) {
       console.error(err);
       alert('Erro ao ajustar estoque');
     } finally {
-      setLoadingAdjust(false);
+      setSaving(false);
     }
-  }
-
-  function formatUpdate(at) {
-    const d = new Date(at);
-    const now = new Date();
-    const diff = now.setHours(0,0,0,0) - d.setHours(0,0,0,0);
-    const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (diff === 0) return `Hoje ${time}`;
-    if (diff === 24*60*60*1000) return `Ontem ${time}`;
-    const date = new Date(at).toLocaleDateString([], { day:'2-digit', month:'2-digit' });
-    return `${date} ${time}`;
   }
 
   const filtered = products.filter(p => {
@@ -103,14 +134,12 @@ export default function Inventory() {
         >
           <option value="">Todos os grupos</option>
           {groups.map(g => (
-            <option key={g._id} value={g._id}>
-              {g.name}
-            </option>
+            <option key={g._id} value={g._id}>{g.name}</option>
           ))}
         </select>
       </div>
 
-      {/* mobile: cards */}
+      {/* mobile */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
         {filtered.map(p => (
           <div key={p._id} className="bg-white rounded-xl shadow-card p-4 space-y-2">
@@ -119,17 +148,15 @@ export default function Inventory() {
             <div className="text-gray-800">
               <span className="font-medium">Qtd:</span> {p.stock}
             </div>
-            {p.minStock != null && p.stock <= p.minStock && (
-              <div className="text-sm text-gray-500 flex items-center">
+            {p.stock < p.minStock && (
+              <div className="text-sm text-gray-600 italic">
                 ⚠️ Abaixo do mínimo ({p.minStock})
               </div>
             )}
-            {p.lastUpdatedAt && (
-              <div className="text-xs text-gray-400">
-                Última atualização: {formatUpdate(p.lastUpdatedAt)}<br/>
-                Atualizado por: {p.lastUpdatedBy || '—'}
-              </div>
-            )}
+            <div className="text-xs text-gray-500 italic">
+              Última atualização: {formatLastUpdate(p.updatedAt)}<br/>
+              {p.updatedBy && <>Atualizado por: {p.updatedBy}</>}
+            </div>
             <button
               onClick={() => openModal(p)}
               className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
@@ -143,12 +170,12 @@ export default function Inventory() {
         )}
       </div>
 
-      {/* desktop: tabela */}
+      {/* desktop */}
       <div className="hidden md:block overflow-x-auto bg-white rounded-2xl shadow-lg">
-        <table className="min-w-full w-full divide-y divide-gray-200">
+        <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {['Produto','Grupo','Qtd.','Aviso','Ajustar'].map(h => (
+              {['Produto','Grupo','Qtd.','Última atualização','Ajustar'].map(h => (
                 <th
                   key={h}
                   className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide"
@@ -170,21 +197,17 @@ export default function Inventory() {
                 <tr key={p._id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">{p.name}</td>
                   <td className="px-6 py-4">{p.group?.name}</td>
-                  <td className="px-6 py-4 text-center">{p.stock}</td>
-                  <td className="px-6 py-4">
-                    {p.minStock != null && p.stock <= p.minStock ? (
-                      <span className="text-sm text-gray-500 flex items-center">
-                        ⚠️ {`<=${p.minStock}`}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-gray-400">—</span>
-                    )}
-                    {p.lastUpdatedAt && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        {formatUpdate(p.lastUpdatedAt)}<br/>
-                        por {p.lastUpdatedBy || '—'}
+                  <td className="px-6 py-4 text-center">
+                    {p.stock}
+                    {p.stock < p.minStock && (
+                      <div className="text-xs text-gray-600 italic mt-1">
+                        ⚠️ Abaixo do mínimo ({p.minStock})
                       </div>
                     )}
+                  </td>
+                  <td className="px-6 py-4 text-xs text-gray-500 italic">
+                    {formatLastUpdate(p.updatedAt)}<br/>
+                    {p.updatedBy && <>Atualizado por: {p.updatedBy}</>}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
@@ -207,8 +230,8 @@ export default function Inventory() {
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full relative">
             <button
               onClick={closeModal}
+              disabled={saving}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              disabled={loadingAdjust}
             >
               ✕
             </button>
@@ -220,11 +243,11 @@ export default function Inventory() {
                 <select
                   value={modal.type}
                   onChange={e => setModal(m => ({ ...m, type: e.target.value }))}
+                  disabled={saving}
                   className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  disabled={loadingAdjust}
                 >
-                  <option>Entrada</option>
-                  <option>Saída</option>
+                  <option value="Entrada">Entrada</option>
+                  <option value="Saida">Saída</option>
                 </select>
               </div>
               <div>
@@ -234,8 +257,8 @@ export default function Inventory() {
                   min="1"
                   value={modal.amount}
                   onChange={e => setModal(m => ({ ...m, amount: e.target.value }))}
+                  disabled={saving}
                   className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  disabled={loadingAdjust}
                 />
               </div>
             </div>
@@ -243,40 +266,22 @@ export default function Inventory() {
             <div className="mt-6 flex justify-end space-x-3">
               <button
                 onClick={closeModal}
+                disabled={saving}
                 className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition"
-                disabled={loadingAdjust}
               >
                 Cancelar
               </button>
               <button
                 onClick={handleConfirm}
+                disabled={saving}
                 className={`px-4 py-2 rounded-lg transition ${
-                  loadingAdjust
-                    ? 'bg-gray-300 text-gray-600'
-                    : 'bg-secondary text-white hover:bg-secondary/90'
+                  saving ? 'bg-gray-300 text-gray-600' : 'bg-secondary text-white hover:bg-secondary/90'
                 }`}
-                disabled={loadingAdjust}
               >
-                {loadingAdjust ? (
-                  <svg
-                    className="animate-spin h-5 w-5 mr-2 text-gray-600"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8H4z"
-                    />
+                {saving ? (
+                  <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                   </svg>
                 ) : (
                   'Confirmar'

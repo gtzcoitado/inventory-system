@@ -2,10 +2,12 @@
 import mongoose from 'mongoose';
 
 const productSchema = new mongoose.Schema({
-  name:      { type: String, required: true },
-  group:     { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
-  stock:     { type: Number, default: 0 },
-  minStock:  { type: Number, default: 0 },    // ← novo campo
+  name: String,
+  group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },
+  stock: { type: Number, default: 0 },
+  // new fields:
+  lastUpdatedAt: { type: Date },
+  lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 });
 
 export default mongoose.model('Product', productSchema);
