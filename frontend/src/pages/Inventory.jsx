@@ -1,6 +1,6 @@
 // src/pages/Inventory.jsx
 import React, { useEffect, useState, useContext } from 'react';
-import axios from '../api'; // sua instância configurada com baseURL e withCredentials
+import axios from '../api'; // instância com baseURL e withCredentials
 import { Search } from 'lucide-react';
 import { AuthContext } from '../AuthContext';
 
@@ -29,8 +29,8 @@ export default function Inventory() {
   const [products, setProducts] = useState([]);
   const [groups, setGroups]     = useState([]);
 
-  const [filterText, setFilterText]       = useState('');
-  const [filterGroup, setFilterGroup]     = useState('');
+  const [filterText, setFilterText]         = useState('');
+  const [filterGroup, setFilterGroup]       = useState('');
   const [filterBelowMin, setFilterBelowMin] = useState(false);
 
   const [modal, setModal] = useState({
@@ -49,11 +49,11 @@ export default function Inventory() {
   async function loadStock() {
     try {
       const { data } = await axios.get('/api/stock');
-      // normaliza campos
+      // normaliza updatedAt / updatedBy
       const norm = data.map(p => ({
         ...p,
-        updatedAt: p.updatedAt    || p.lastUpdatedAt,
-        updatedBy: p.updatedBy    || p.lastUpdatedBy?.name || null
+        updatedAt: p.updatedAt || p.lastUpdatedAt,
+        updatedBy: p.updatedBy || p.lastUpdatedBy?.name || '–'
       }));
       setProducts(norm);
     } catch (err) {
@@ -94,7 +94,7 @@ export default function Inventory() {
       const norm = {
         ...updated,
         updatedAt: updated.updatedAt || updated.lastUpdatedAt,
-        updatedBy: updated.updatedBy || updated.lastUpdatedBy?.name || null
+        updatedBy: updated.updatedBy || updated.lastUpdatedBy?.name || '–'
       };
       setProducts(prev =>
         prev.map(p => (p._id === norm._id ? norm : p))
@@ -114,9 +114,9 @@ export default function Inventory() {
       !txt ||
       p.name.toLowerCase().includes(txt) ||
       p.group?.name.toLowerCase().includes(txt);
-    const okGrp = !filterGroup || p.group?._id === filterGroup;
-    const okMin = !filterBelowMin || p.stock < p.minStock;
-    return okTxt && okGrp && okMin;
+    const okGrp     = !filterGroup || p.group?._id === filterGroup;
+    const okBelow   = !filterBelowMin || p.stock < p.minStock;
+    return okTxt && okGrp && okBelow;
   });
 
   return (
@@ -132,13 +132,13 @@ export default function Inventory() {
             placeholder="Buscar por produto ou grupo..."
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <select
           value={filterGroup}
           onChange={e => setFilterGroup(e.target.value)}
-          className="w-full py-2 sm:py-3 px-4 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full py-2 px-4 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="">Todos os grupos</option>
           {groups.map(g => (
@@ -168,17 +168,17 @@ export default function Inventory() {
               <span className="font-medium">Qtd:</span> {p.stock}
             </div>
             {p.stock < p.minStock && (
-              <div className="text-sm text-gray-600 italic">
+              <div className="text-sm text-red-600 italic">
                 ⚠️ Abaixo do mínimo ({p.minStock})
               </div>
             )}
             <div className="text-xs text-gray-500 italic">
               Última atualização: {formatLastUpdate(p.updatedAt)}<br/>
-              {p.updatedBy && <>Atualizado por: {p.updatedBy}</>}
+              Atualizado por: <span className="font-medium">{p.updatedBy}</span>
             </div>
             <button
               onClick={() => openModal(p)}
-              className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
+              className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
             >
               Ajustar
             </button>
@@ -213,25 +213,25 @@ export default function Inventory() {
               </tr>
             ) : (
               filtered.map(p => (
-                <tr key={p._id} className="hover:bg-gray-50 transition-colors">
+                <tr key={p._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">{p.name}</td>
                   <td className="px-6 py-4">{p.group?.name}</td>
                   <td className="px-6 py-4 text-center">
                     {p.stock}
                     {p.stock < p.minStock && (
-                      <div className="text-xs text-gray-600 italic mt-1">
+                      <div className="text-xs text-red-600 italic mt-1">
                         ⚠️ Abaixo do mínimo ({p.minStock})
                       </div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 italic">
                     {formatLastUpdate(p.updatedAt)}<br/>
-                    {p.updatedBy && <>Atualizado por: {p.updatedBy}</>}
+                    Atualizado por: <span className="font-medium">{p.updatedBy}</span>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => openModal(p)}
-                      className="px-4 py-2 bg-primary text-white rounded-full hover:bg-primary/90 transition"
+                      className="px-4 py-2 bg-primary text-white rounded-full hover:bg-primary/90"
                     >
                       Ajustar
                     </button>
@@ -250,7 +250,7 @@ export default function Inventory() {
             <button
               onClick={closeModal}
               disabled={saving}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
             >
               ✕
             </button>
@@ -282,29 +282,27 @@ export default function Inventory() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-6 flex justify-end space-x-2">
               <button
                 onClick={closeModal}
                 disabled={saving}
-                className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={saving}
-                className={`px-4 py-2 rounded-lg transition ${
+                className={`px-4 py-2 rounded-lg ${
                   saving ? 'bg-gray-300 text-gray-600' : 'bg-secondary text-white hover:bg-secondary/90'
-                }`}
+                } flex items-center`}
               >
                 {saving ? (
                   <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    <path className="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor"/>
                   </svg>
-                ) : (
-                  'Confirmar'
-                )}
+                ) : 'Confirmar'}
               </button>
             </div>
           </div>
