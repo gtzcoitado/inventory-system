@@ -1,6 +1,6 @@
 // src/pages/Inventory.jsx
 import React, { useEffect, useState, useContext } from 'react';
-import axios from 'axios';
+import axios from '../api'; // sua instância configurada com baseURL e withCredentials
 import { Search } from 'lucide-react';
 import { AuthContext } from '../AuthContext';
 
@@ -11,19 +11,28 @@ function formatLastUpdate(iso) {
   const now = new Date();
   const pad = n => String(n).padStart(2, '0');
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (d.toDateString() === now.toDateString()) return `Hoje às ${time}`;
+
+  if (d.toDateString() === now.toDateString()) {
+    return `Hoje às ${time}`;
+  }
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return `Ontem às ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) {
+    return `Ontem às ${time}`;
+  }
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} às ${time}`;
 }
 
 export default function Inventory() {
   const { user } = useContext(AuthContext);
+
   const [products, setProducts] = useState([]);
   const [groups, setGroups]     = useState([]);
-  const [filterText, setFilterText]   = useState('');
-  const [filterGroup, setFilterGroup] = useState('');
+
+  const [filterText, setFilterText]       = useState('');
+  const [filterGroup, setFilterGroup]     = useState('');
+  const [filterBelowMin, setFilterBelowMin] = useState(false);
+
   const [modal, setModal] = useState({
     isOpen: false,
     product: null,
@@ -40,11 +49,11 @@ export default function Inventory() {
   async function loadStock() {
     try {
       const { data } = await axios.get('/api/stock');
-      // normalize tanto updatedAt/updatedBy quanto lastUpdatedAt/lastUpdatedBy
+      // normaliza campos
       const norm = data.map(p => ({
         ...p,
-        updatedAt: p.updatedAt || p.lastUpdatedAt,
-        updatedBy: p.updatedBy || p.lastUpdatedBy?.name || null
+        updatedAt: p.updatedAt    || p.lastUpdatedAt,
+        updatedBy: p.updatedBy    || p.lastUpdatedBy?.name || null
       }));
       setProducts(norm);
     } catch (err) {
@@ -82,13 +91,11 @@ export default function Inventory() {
         `/api/stock/${product._id}/adjust`,
         { type, amount: qty, userId: user._id }
       );
-      // normaliza o updated retornado
       const norm = {
         ...updated,
         updatedAt: updated.updatedAt || updated.lastUpdatedAt,
         updatedBy: updated.updatedBy || updated.lastUpdatedBy?.name || null
       };
-      // atualiza só o produto alterado em tempo real
       setProducts(prev =>
         prev.map(p => (p._id === norm._id ? norm : p))
       );
@@ -108,7 +115,8 @@ export default function Inventory() {
       p.name.toLowerCase().includes(txt) ||
       p.group?.name.toLowerCase().includes(txt);
     const okGrp = !filterGroup || p.group?._id === filterGroup;
-    return okTxt && okGrp;
+    const okMin = !filterBelowMin || p.stock < p.minStock;
+    return okTxt && okGrp && okMin;
   });
 
   return (
@@ -116,7 +124,7 @@ export default function Inventory() {
       <h2 className="text-3xl font-extrabold text-primary">Estoque</h2>
 
       {/* filtros */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -134,9 +142,20 @@ export default function Inventory() {
         >
           <option value="">Todos os grupos</option>
           {groups.map(g => (
-            <option key={g._id} value={g._id}>{g.name}</option>
+            <option key={g._id} value={g._id}>
+              {g.name}
+            </option>
           ))}
         </select>
+        <label className="inline-flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={filterBelowMin}
+            onChange={e => setFilterBelowMin(e.target.checked)}
+            className="h-4 w-4 text-primary border-gray-300 rounded"
+          />
+          <span className="text-gray-700">Abaixo do mínimo</span>
+        </label>
       </div>
 
       {/* mobile */}
