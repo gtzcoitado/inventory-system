@@ -3,22 +3,18 @@ import { AuthContext } from '../AuthContext';
 
 export default function Login() {
   const { login } = useContext(AuthContext);
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  
-  // novo estado de loading e de erro
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
 
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      // supondo que login lance exceção em credenciais inválidas
-      await login(name, password);
-      // se login der certo, AuthContext navegará para a rota padrão
-    } catch (err) {
+      await login(username, password);
+    } catch {
       setError('Login ou usuário inválido');
     } finally {
       setLoading(false);
@@ -39,7 +35,6 @@ export default function Login() {
           Bem-vindo, faça login
         </h2>
 
-        {/* exibe erro */}
         {error && (
           <div className="bg-red-100 text-red-800 p-2 rounded-md text-center">
             {error}
@@ -53,13 +48,14 @@ export default function Login() {
             </label>
             <input
               type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
               placeholder="Seu usuário"
               disabled={loading}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Senha
@@ -68,20 +64,41 @@ export default function Login() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="••••••••"
               disabled={loading}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
+
           <button
             type="submit"
-            className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             disabled={loading}
+            className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
-            {loading
-              ? <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-              : 'Entrar'
-            }
+            {loading ? (
+              <svg
+                className="animate-spin h-5 w-5 mr-2 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+            ) : (
+              'Entrar'
+            )}
           </button>
         </form>
       </div>
