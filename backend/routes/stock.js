@@ -2,19 +2,20 @@ import express from 'express';
 import Product from '../models/Product.js';
 const router = express.Router();
 
-// GET /api/stock — já traz os campos renomeados para o frontend
+// GET /api/stock
 router.get('/', async (req, res) => {
   try {
     const all = await Product.find()
       .populate('group')
       .populate('lastUpdatedBy', 'name');
-    
-    // renomeia lastUpdatedAt → updatedAt e lastUpdatedBy → updatedBy
-    const result = all.map(prod => {
-      const obj = prod.toObject();
-      obj.updatedAt  = obj.lastUpdatedAt;
-      obj.updatedBy  = obj.lastUpdatedBy?.name || null;
-      return obj;
+
+    const result = all.map(p => {
+      const o = p.toObject();
+      return {
+        ...o,
+        updatedAt:  o.lastUpdatedAt,
+        updatedBy:  o.lastUpdatedBy?.name || '–'
+      };
     });
 
     res.json(result);
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/stock/:id/adjust — agora aceita userId no body como fallback
+// POST /api/stock/:id/adjust
 router.post('/:id/adjust', async (req, res) => {
   const { id } = req.params;
   const { type, amount, userId } = req.body;
@@ -33,30 +34,28 @@ router.post('/:id/adjust', async (req, res) => {
     const prod = await Product.findById(id);
     if (!prod) return res.status(404).json({ error: 'Produto não encontrado' });
 
-    // ajusta estoque
-    if (type === 'Entrada') prod.stock += amount;
-    else                     prod.stock = Math.max(0, prod.stock - amount);
+    prod.stock = type === 'Entrada'
+      ? prod.stock + amount
+      : Math.max(0, prod.stock - amount);
 
-    // grava timestamp e usuário (usa req.user se existir, senão userId)
-    prod.lastUpdatedAt   = new Date();
-    prod.lastUpdatedBy   = req.user?._id || userId;
+    prod.lastUpdatedAt = new Date();
+    prod.lastUpdatedBy = userId;              // usa sempre o userId enviado
 
     await prod.save();
 
-    // re-fetch para popular group e lastUpdatedBy.name
-    const updatedLong = await Product.findById(id)
+    const updated = await Product.findById(id)
       .populate('group')
       .populate('lastUpdatedBy', 'name');
 
-    // ajusta campos pra frontend
-    const updated = updatedLong.toObject();
-    updated.updatedAt = updated.lastUpdatedAt;
-    updated.updatedBy = updated.lastUpdatedBy?.name || null;
-
-    return res.json(updated);
+    const o = updated.toObject();
+    return res.json({
+      ...o,
+      updatedAt:  o.lastUpdatedAt,
+      updatedBy:  o.lastUpdatedBy?.name || '–'
+    });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Erro ao ajustar estoque' });
+    res.status(500).json({ error: 'Erro ao ajustar estoque' });
   }
 });
 
