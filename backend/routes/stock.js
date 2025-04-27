@@ -12,36 +12,45 @@ router.get('/', async (req, res) => {
   try {
     const all = await Product.find()
       .populate('group')
-      .populate('lastUpdatedBy', 'name');  // puxa apenas o campo name do usuário
+      .populate('lastUpdatedBy', 'name');
 
     const result = all.map(p => {
       const o = p.toObject();
       return {
-        _id:         o._id,
-        name:        o.name,
-        stock:       o.stock,
-        minStock:    o.minStock,
-        group:       o.group,
-        updatedAt:   o.lastUpdatedAt   || null,
-        updatedBy:   o.lastUpdatedBy?.name || '–',
+        _id:       o._id,
+        name:      o.name,
+        stock:     o.stock,
+        minStock:  o.minStock,
+        group:     o.group,
+        // renomeia para o front
+        updatedAt: o.lastUpdatedAt   || null,
+        updatedBy: o.lastUpdatedBy?.name || '–'
       };
     });
 
     res.json(result);
   } catch (err) {
-    console.error('Erro ao buscar estoque:', err);
+    console.error('GET /api/stock erro:', err);
     res.status(500).json({ error: 'Erro ao buscar estoque' });
   }
 });
 
+
 /**
  * POST /api/stock/:id/adjust
- * Ajusta o estoque de um produto (Entrada/Saída), grava timestamp e quem atualizou
- * Recebe no body: { type: 'Entrada' | 'Saida', amount: number, userId: string }
+ * Ajusta o estoque e grava timestamp + quem fez
+ * Recebe no body: { type: 'Entrada'|'Saida', amount: number, userId?: string }
+ * Também aceita req.user._id, caso você tenha middleware JWT.
  */
 router.post('/:id/adjust', async (req, res) => {
-  const { id } = req.params;
-  const { type, amount, userId } = req.body;
+  const { id }      = req.params;
+  const { type, amount, userId: bodyUserId } = req.body;
+
+  // tenta pegar o usuário de req.user (se existir) ou do corpo da requisição
+  const operatorId = req.user?._id || bodyUserId;
+  if (!operatorId) {
+    return res.status(400).json({ error: 'Identificação do usuário faltando' });
+  }
 
   try {
     const prod = await Product.findById(id);
@@ -56,29 +65,29 @@ router.post('/:id/adjust', async (req, res) => {
       prod.stock = Math.max(0, prod.stock - amount);
     }
 
-    // registra data e autor do ajuste
+    // grava audit fields
     prod.lastUpdatedAt = new Date();
-    prod.lastUpdatedBy = userId;
+    prod.lastUpdatedBy = operatorId;
 
     await prod.save();
 
-    // re-fetch para popular referências
+    // re-fetch para popular referência e retornar apenas campos úteis
     const updated = await Product.findById(id)
       .populate('group')
       .populate('lastUpdatedBy', 'name');
 
     const o = updated.toObject();
-    res.json({
-      _id:         o._id,
-      name:        o.name,
-      stock:       o.stock,
-      minStock:    o.minStock,
-      group:       o.group,
-      updatedAt:   o.lastUpdatedAt,
-      updatedBy:   o.lastUpdatedBy?.name || '–',
+    return res.json({
+      _id:       o._id,
+      name:      o.name,
+      stock:     o.stock,
+      minStock:  o.minStock,
+      group:     o.group,
+      updatedAt: o.lastUpdatedAt,
+      updatedBy: o.lastUpdatedBy?.name || '–'
     });
   } catch (err) {
-    console.error('Erro ao ajustar estoque:', err);
+    console.error('POST /api/stock/:id/adjust erro:', err);
     res.status(500).json({ error: 'Erro ao ajustar estoque' });
   }
 });

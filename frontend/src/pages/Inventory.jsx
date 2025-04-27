@@ -1,6 +1,6 @@
 // src/pages/Inventory.jsx
 import React, { useEffect, useState, useContext } from 'react';
-import axios from '../api'; // instância com baseURL e withCredentials
+import axios from '../api';                // sua instância com baseURL e withCredentials
 import { Search } from 'lucide-react';
 import { AuthContext } from '../AuthContext';
 
@@ -49,13 +49,8 @@ export default function Inventory() {
   async function loadStock() {
     try {
       const { data } = await axios.get('/api/stock');
-      // normaliza updatedAt / updatedBy
-      const norm = data.map(p => ({
-        ...p,
-        updatedAt: p.updatedAt || p.lastUpdatedAt,
-        updatedBy: p.updatedBy || p.lastUpdatedBy?.name || '–'
-      }));
-      setProducts(norm);
+      // aqui já recebemos updatedAt e updatedBy do backend
+      setProducts(data);
     } catch (err) {
       console.error('Erro ao carregar estoque:', err);
     }
@@ -91,17 +86,13 @@ export default function Inventory() {
         `/api/stock/${product._id}/adjust`,
         { type, amount: qty, userId: user._id }
       );
-      const norm = {
-        ...updated,
-        updatedAt: updated.updatedAt || updated.lastUpdatedAt,
-        updatedBy: updated.updatedBy || updated.lastUpdatedBy?.name || '–'
-      };
+      // atualiza apenas o produto ajustado
       setProducts(prev =>
-        prev.map(p => (p._id === norm._id ? norm : p))
+        prev.map(p => p._id === updated._id ? updated : p)
       );
       closeModal();
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao ajustar estoque:', err);
       alert('Erro ao ajustar estoque');
     } finally {
       setSaving(false);
@@ -114,8 +105,8 @@ export default function Inventory() {
       !txt ||
       p.name.toLowerCase().includes(txt) ||
       p.group?.name.toLowerCase().includes(txt);
-    const okGrp     = !filterGroup || p.group?._id === filterGroup;
-    const okBelow   = !filterBelowMin || p.stock < p.minStock;
+    const okGrp   = !filterGroup || p.group?._id === filterGroup;
+    const okBelow = !filterBelowMin || p.stock < p.minStock;
     return okTxt && okGrp && okBelow;
   });
 
@@ -142,9 +133,7 @@ export default function Inventory() {
         >
           <option value="">Todos os grupos</option>
           {groups.map(g => (
-            <option key={g._id} value={g._id}>
-              {g.name}
-            </option>
+            <option key={g._id} value={g._id}>{g.name}</option>
           ))}
         </select>
         <label className="inline-flex items-center space-x-2">
@@ -168,12 +157,10 @@ export default function Inventory() {
               <span className="font-medium">Qtd:</span> {p.stock}
             </div>
             {p.stock < p.minStock && (
-              <div className="text-sm text-red-600 italic">
-                ⚠️ Abaixo do mínimo ({p.minStock})
-              </div>
+              <div className="text-sm text-red-600 italic">⚠️ Abaixo do mínimo ({p.minStock})</div>
             )}
             <div className="text-xs text-gray-500 italic">
-              Última atualização: {formatLastUpdate(p.updatedAt)}<br/>
+              Última atualização: {formatLastUpdate(p.updatedAt)}<br />
               Atualizado por: <span className="font-medium">{p.updatedBy}</span>
             </div>
             <button
@@ -195,10 +182,7 @@ export default function Inventory() {
           <thead className="bg-gray-50">
             <tr>
               {['Produto','Grupo','Qtd.','Última atualização','Ajustar'].map(h => (
-                <th
-                  key={h}
-                  className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide"
-                >
+                <th key={h} className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">
                   {h}
                 </th>
               ))}
@@ -207,9 +191,7 @@ export default function Inventory() {
           <tbody className="bg-white divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
-                  Nenhum item encontrado.
-                </td>
+                <td colSpan={5} className="px-6 py-8 text-center text-gray-400">Nenhum item encontrado.</td>
               </tr>
             ) : (
               filtered.map(p => (
@@ -219,13 +201,11 @@ export default function Inventory() {
                   <td className="px-6 py-4 text-center">
                     {p.stock}
                     {p.stock < p.minStock && (
-                      <div className="text-xs text-red-600 italic mt-1">
-                        ⚠️ Abaixo do mínimo ({p.minStock})
-                      </div>
+                      <div className="text-xs text-red-600 italic mt-1">⚠️ Abaixo do mínimo ({p.minStock})</div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 italic">
-                    {formatLastUpdate(p.updatedAt)}<br/>
+                    {formatLastUpdate(p.updatedAt)}<br />
                     Atualizado por: <span className="font-medium">{p.updatedBy}</span>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -272,9 +252,7 @@ export default function Inventory() {
               <div>
                 <label className="block text-sm font-medium mb-1">Quantidade</label>
                 <input
-                  type="number"
-                  min="1"
-                  value={modal.amount}
+                  type="number" min="1" value={modal.amount}
                   onChange={e => setModal(m => ({ ...m, amount: e.target.value }))}
                   disabled={saving}
                   className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
@@ -297,12 +275,10 @@ export default function Inventory() {
                   saving ? 'bg-gray-300 text-gray-600' : 'bg-secondary text-white hover:bg-secondary/90'
                 } flex items-center`}
               >
-                {saving ? (
-                  <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor"/>
-                  </svg>
-                ) : 'Confirmar'}
+                {saving
+                  ? <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                  : 'Confirmar'
+                }
               </button>
             </div>
           </div>
