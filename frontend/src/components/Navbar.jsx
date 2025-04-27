@@ -1,3 +1,4 @@
+// src/components/Navbar.jsx
 import React, { useContext } from 'react';
 import { NavLink } from 'react-router-dom';
 import { AuthContext } from '../AuthContext';
@@ -6,13 +7,16 @@ import { Menu, X } from 'lucide-react';
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
   const [open, setOpen] = React.useState(false);
+
+  // added '/reports' entry here
   const links = [
-    ['/',        'Estoque'],
-    ['/products','Produtos'],
-    ['/groups',  'Grupos'],
+    ['/',           'Estoque'],
+    ['/products',   'Produtos'],
+    ['/groups',     'Grupos'],
     ['/checklists','Checklist'],
-    ['/roles',   'Funções'],
-    ['/users',   'Usuários'],
+    ['/roles',      'Funções'],
+    ['/users',      'Usuários'],
+    ['/reports',    'Relatórios'],    // ← new
   ];
   
   return (
@@ -39,7 +43,6 @@ export default function Navbar() {
             </NavLink>
           ))}
 
-          {/* botão de logout */}
           <button
             onClick={logout}
             className="ml-4 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition"
@@ -76,7 +79,6 @@ export default function Navbar() {
               </NavLink>
             ))}
 
-            {/* logout móvel */}
             <button
               onClick={logout}
               className="w-full text-left px-3 py-2 mt-2 text-red-600 hover:bg-red-50 rounded"
@@ -87,5 +89,5 @@ export default function Navbar() {
         </nav>
       )}
     </header>
-  );
+);
 }

@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -9,6 +10,7 @@ import Groups from './pages/Groups';
 import Checklists from './pages/Checklists';
 import Roles from './pages/Roles';
 import Users from './pages/Users';
+import Reports from './pages/Reports';   // ← imported
 
 export default function App() {
   return (
@@ -65,6 +67,16 @@ export default function App() {
             element={
               <ProtectedRoute permission="Usuários">
                 <Users />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* new reports route */}
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute permission="Relatórios">
+                <Reports />
               </ProtectedRoute>
             }
           />

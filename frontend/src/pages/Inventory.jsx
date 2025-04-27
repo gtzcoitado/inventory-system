@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
 import { Search } from 'lucide-react';
+import { AuthContext } from '../AuthContext';
 
 export default function Inventory() {
+  const { user } = useContext(AuthContext);
   const [products, setProducts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [filterText, setFilterText] = useState('');
@@ -57,6 +59,17 @@ export default function Inventory() {
     }
   }
 
+  function formatUpdate(at) {
+    const d = new Date(at);
+    const now = new Date();
+    const diff = now.setHours(0,0,0,0) - d.setHours(0,0,0,0);
+    const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (diff === 0) return `Hoje ${time}`;
+    if (diff === 24*60*60*1000) return `Ontem ${time}`;
+    const date = new Date(at).toLocaleDateString([], { day:'2-digit', month:'2-digit' });
+    return `${date} ${time}`;
+  }
+
   const filtered = products.filter(p => {
     const txt = filterText.trim().toLowerCase();
     const okTxt =
@@ -100,15 +113,23 @@ export default function Inventory() {
       {/* mobile: cards */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
         {filtered.map(p => (
-          <div
-            key={p._id}
-            className="bg-white rounded-xl shadow-card p-4 space-y-2"
-          >
+          <div key={p._id} className="bg-white rounded-xl shadow-card p-4 space-y-2">
             <div className="text-lg font-semibold">{p.name}</div>
             <div className="text-gray-600">{p.group?.name}</div>
             <div className="text-gray-800">
               <span className="font-medium">Qtd:</span> {p.stock}
             </div>
+            {p.minStock != null && p.stock <= p.minStock && (
+              <div className="text-sm text-gray-500 flex items-center">
+                ⚠️ Abaixo do mínimo ({p.minStock})
+              </div>
+            )}
+            {p.lastUpdatedAt && (
+              <div className="text-xs text-gray-400">
+                Última atualização: {formatUpdate(p.lastUpdatedAt)}<br/>
+                Atualizado por: {p.lastUpdatedBy || '—'}
+              </div>
+            )}
             <button
               onClick={() => openModal(p)}
               className="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
@@ -118,9 +139,7 @@ export default function Inventory() {
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="text-center text-gray-500 py-8">
-            Nenhum item encontrado.
-          </div>
+          <div className="text-center text-gray-500 py-8">Nenhum item encontrado.</div>
         )}
       </div>
 
@@ -129,7 +148,7 @@ export default function Inventory() {
         <table className="min-w-full w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {['Produto', 'Grupo', 'Qtd.', 'Ajustar'].map(h => (
+              {['Produto','Grupo','Qtd.','Aviso','Ajustar'].map(h => (
                 <th
                   key={h}
                   className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide"
@@ -142,7 +161,7 @@ export default function Inventory() {
           <tbody className="bg-white divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
+                <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
                   Nenhum item encontrado.
                 </td>
               </tr>
@@ -152,6 +171,21 @@ export default function Inventory() {
                   <td className="px-6 py-4">{p.name}</td>
                   <td className="px-6 py-4">{p.group?.name}</td>
                   <td className="px-6 py-4 text-center">{p.stock}</td>
+                  <td className="px-6 py-4">
+                    {p.minStock != null && p.stock <= p.minStock ? (
+                      <span className="text-sm text-gray-500 flex items-center">
+                        ⚠️ {`<=${p.minStock}`}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
+                    {p.lastUpdatedAt && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {formatUpdate(p.lastUpdatedAt)}<br/>
+                        por {p.lastUpdatedBy || '—'}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => openModal(p)}
@@ -182,9 +216,7 @@ export default function Inventory() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Tipo de ajuste
-                </label>
+                <label className="block text-sm font-medium mb-1">Tipo de ajuste</label>
                 <select
                   value={modal.type}
                   onChange={e => setModal(m => ({ ...m, type: e.target.value }))}
@@ -196,9 +228,7 @@ export default function Inventory() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Quantidade
-                </label>
+                <label className="block text-sm font-medium mb-1">Quantidade</label>
                 <input
                   type="number"
                   min="1"
@@ -220,16 +250,37 @@ export default function Inventory() {
               </button>
               <button
                 onClick={handleConfirm}
-                className={`px-4 py-2 rounded-lg transition
-                  ${loadingAdjust
+                className={`px-4 py-2 rounded-lg transition ${
+                  loadingAdjust
                     ? 'bg-gray-300 text-gray-600'
-                    : 'bg-secondary text-white hover:bg-secondary/90'}`}
+                    : 'bg-secondary text-white hover:bg-secondary/90'
+                }`}
                 disabled={loadingAdjust}
               >
-                {loadingAdjust
-                  ? <svg className="animate-spin h-5 w-5 mr-2 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-                  : 'Confirmar'
-                }
+                {loadingAdjust ? (
+                  <svg
+                    className="animate-spin h-5 w-5 mr-2 text-gray-600"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v8H4z"
+                    />
+                  </svg>
+                ) : (
+                  'Confirmar'
+                )}
               </button>
             </div>
           </div>
